@@ -1,4 +1,3 @@
-
 import express from 'express';
 import compression from 'compression';
 import path from 'path';
@@ -9,7 +8,9 @@ import createMemoryHistory from 'react-router/lib/createMemoryHistory';
 import match from 'react-router/lib/match';
 import template from './template';
 import routes from '../routes';
+import cluster from 'cluster';
 
+const numCPUs = require('os').cpus().length;
 const clientAssets = require(KYT.ASSETS_MANIFEST); // eslint-disable-line import/no-dynamic-require
 const app = express();
 
@@ -45,4 +46,24 @@ app.get('*', (request, response) => {
   });
 });
 
-app.listen(parseInt(KYT.SERVER_PORT, 10));
+if (cluster.isMaster) {
+  // Either use number of CPUs or base this off a config var?
+  for (let i = 0; i < numCPUs; i++) {
+    cluster.fork();
+  }
+
+  // worker process is online
+  cluster.on('online', (worker) => {
+    // TODO some kind of logging along the lines of:
+    // console.log(`Worker ${worker.process.pid} is online, expecting: ${numCPUs} workers.`);
+  });
+
+  // worker exited, bring another online
+  cluster.on('exit', (worker, code, signal) => {
+    // TODO some kind of logging along the lines of:
+    // console.log(`Worker ${worker.process.pid} died with code: ${code}, and signal: ${signal}`)
+    cluster.fork();
+  });
+} else if (cluster.isWorker) {
+  app.listen(parseInt(KYT.SERVER_PORT, 10));
+}
